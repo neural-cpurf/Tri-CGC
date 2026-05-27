@@ -65,22 +65,8 @@ cd scripts
 python train_model_trimodal.py
 ```
 
-## Citation
-
-If you use Tri-CGC in your research, please cite:
-
-```bibtex
-@article{tri-cgc,
-  title     = {Tri-CGC: Trimodal Customized Gate Control for Pesticide Toxicity Prediction},
-  author    = {},
-  journal   = {},
-  year      = {2025}
-}
-```
-
 ## License
 
-## License
 
 This project is released for academic and non-commercial research use only.
 
