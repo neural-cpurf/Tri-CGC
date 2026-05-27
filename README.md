@@ -66,16 +66,6 @@ cd scripts
 python train_model_trimodal_with_test.py
 ```
 
-### 3. Run a Single Modality
-
-You can disable modalities via the config flags:
-
-```python
-cfg.use_graph = True
-cfg.use_smiles = False
-cfg.use_fp = False  # Graph-only mode
-```
-
 ## Citation
 
 If you use Tri-CGC in your research, please cite:
