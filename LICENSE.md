@@ -80,14 +80,14 @@ Use other than academic and non-commercial use as above is deemed to be commerci
 ## END OF TERMS AND CONDITIONS
 
 ## Appendix: Suggested code header and licensing information
-[Program name] is © 2021, [Name of copyright holder]
+[Tri-CGC] is © 2026, [Name of copyright holder]
 
-[Program name] is published and distributed under the Academic Software License v1.0 (ASL). 
+[Tri-CGC] is published and distributed under the Academic Software License v1.0 (ASL). 
 
-[Program name] is distributed in the hope that it will be useful for non-commercial academic research, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the ASL for more details. 
+[Tri-CGC] is distributed in the hope that it will be useful for non-commercial academic research, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the ASL for more details. 
 
-You should have received a copy of the ASL along with this program; if not, write to [Contact details of copyright holder].  It is also published at [URL where licence terms are published].
+You should have received a copy of the ASL along with this program; if not, write to [zhouruifeng@momedtech.com.cn].  It is also published at [URL where licence terms are published].
 
-You may contact the original licensor at [Contact details of original licensor].
+You may contact the original licensor at [zhourf@momedtech.com.cn].
 
 
