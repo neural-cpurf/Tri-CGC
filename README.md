@@ -43,13 +43,11 @@ The dataset should be an Excel (`.xlsx`) or CSV file with the following columns:
 
 | SMILES | GHS_oral | GHS_dermal | GHS_inhalation |
 |--------|----------|------------|----------------|
-| CC(C)Oc1ccc... | 0 | 1 | 0 |
+| CC(C)Oc1ccc... | 0 | 1 | -1 |
 | ... | ... | ... | ... |
 
 - **SMILES**: canonical SMILES string of the compound
 - **GHS_oral / GHS_dermal / GHS_inhalation**: binary toxicity labels (0 = non-toxic, 1 = toxic). Use -1 for unknown/missing labels.
-
-For 10-fold cross-validation, split the data into train/validation folds and a held-out test set.
 
 ### 2. Configure & Train
 
