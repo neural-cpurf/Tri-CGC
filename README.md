@@ -11,7 +11,7 @@ Toxicity prediction of pesticide molecules is a critical yet challenging task du
 - **Residual expert networks**: each expert uses residual connections for stable gradient flow, allowing deeper architectures even with small datasets.
 - **Multi-task learning with uncertainty weighting**: jointly learns three toxicity endpoints (oral, dermal, inhalation) with learnable task weights.
 - **Robustness mechanisms**: modality dropout and fingerprint soft masking for improved generalization.
-
+![Model Structure](figures/model_structure.tif)
 
 ## Dependencies
 
