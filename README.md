@@ -62,7 +62,7 @@ Then run:
 
 ```bash
 cd scripts
-python train_model_trimodal_with_test.py
+python train_model_trimodal.py
 ```
 
 ## Citation
