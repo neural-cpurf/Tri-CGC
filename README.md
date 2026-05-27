@@ -51,12 +51,11 @@ The dataset should be an Excel (`.xlsx`) or CSV file with the following columns:
 
 ### 2. Configure & Train
 
-Edit the `Config` class in [train_model_trimodal_with_test.py](scripts/train_model_trimodal_with_test.py#L55) to set your data paths:
+Edit the `Config` class in [train_model_trimodal_with_test.py](scripts/train_model_trimodal.py#L55) to set your data paths:
 
 ```python
-excel_path: str = "data/train_fold_0.xlsx"
-val_path: str = "data/val_fold_0.xlsx"
-test_path: str = "data/test.xlsx"
+excel_path: str = [Traindata_Path]
+val_path: str = [Validatedata_Path]
 ```
 
 Then run:
