@@ -4,22 +4,13 @@ import torch.nn.functional as F
 from typing import Optional, List
 
 
-# ==========================================
-# 1. 残差专家模块 (Residual Expert) [已修改]
-# ==========================================
 class ResidualExpert(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim=None, dropout=0.3):
-        """
-        :param input_dim: 输入特征维度
-        :param hidden_dim: 专家内部隐藏层维度 (控制参数量/容量)
-        :param output_dim: 专家输出维度 (用于多专家对齐，若为None则等于hidden_dim)
-        """
         super(ResidualExpert, self).__init__()
 
         if output_dim is None:
             output_dim = hidden_dim
 
-        # 主路径: Input -> Hidden
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
@@ -27,14 +18,11 @@ class ResidualExpert(nn.Module):
             nn.Dropout(dropout)
         )
 
-        # 对齐层: Hidden -> Output (如果维度不同，则投影；否则直通)
         if hidden_dim != output_dim:
             self.output_proj = nn.Linear(hidden_dim, output_dim)
         else:
             self.output_proj = nn.Identity()
 
-        # 残差连接路径: Input -> Output
-        # 必须保证残差分支的维度与主路径最终输出维度一致
         if input_dim != output_dim:
             self.projection = nn.Sequential(
                 nn.Linear(input_dim, output_dim),
@@ -46,39 +34,28 @@ class ResidualExpert(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # 主路径计算
         out = self.net(x)
         out = self.output_proj(out)
-
-        # 残差连接
         res = self.projection(x)
 
         return self.relu(out + res)
 
-
-# ==========================================
-# 2. 动态多模态 CGC 模型
-# ==========================================
 class MultimodalCGC(nn.Module):
     def __init__(self,
                  graph_dim,
                  smiles_dim,
                  fp_dim,
-                 # --- 动态开关 ---
                  use_graph=True,
                  use_smiles=True,
                  use_fp=True,
-                 # --- 基础配置 ---
                  num_tasks=3,
                  num_classes=1,
-                 # --- 专家数量配置 ---
                  num_graph_experts=3,
                  num_smiles_experts=3,
                  num_fp_experts=3,
                  num_specific_experts=2,
-                 # --- 维度配置 [已修改] ---
-                 expert_hidden=128,  # 模态共享专家的隐藏层维度
-                 task_expert_hidden=128,  # [新增] 任务专属专家的隐藏层维度
+                 expert_hidden=128,  
+                 task_expert_hidden=128,
                  dropout=0.3):
         super(MultimodalCGC, self).__init__()
 
@@ -87,7 +64,6 @@ class MultimodalCGC(nn.Module):
         self.task_expert_hidden = task_expert_hidden
         self.num_specific_experts = num_specific_experts
 
-        # 记录开关
         self.use_graph = use_graph
         self.use_smiles = use_smiles
         self.use_fp = use_fp
@@ -95,10 +71,6 @@ class MultimodalCGC(nn.Module):
         if not any([use_graph, use_smiles, use_fp]):
             raise ValueError("At least one modality must be enabled!")
 
-        # --- 1. 动态构建共享专家池 (Shared Experts) ---
-        # 共享专家的 output_dim 统一设为 expert_hidden
-
-        # A. Graph 专家
         if self.use_graph:
             if num_graph_experts <= 0: raise ValueError("num_graph_experts must be > 0")
             self.graph_experts = nn.ModuleList([
@@ -108,7 +80,6 @@ class MultimodalCGC(nn.Module):
         else:
             self.graph_experts = None
 
-        # B. SMILES 专家
         if self.use_smiles:
             if num_smiles_experts <= 0: raise ValueError("num_smiles_experts must be > 0")
             self.smiles_experts = nn.ModuleList([
@@ -119,7 +90,6 @@ class MultimodalCGC(nn.Module):
         else:
             self.smiles_experts = None
 
-        # C. Fingerprint 专家
         if self.use_fp:
             if num_fp_experts <= 0: raise ValueError("num_fp_experts must be > 0")
             self.fp_experts = nn.ModuleList([
@@ -129,13 +99,11 @@ class MultimodalCGC(nn.Module):
         else:
             self.fp_experts = None
 
-        # --- 2. 计算动态输入维度 ---
         self.joint_dim = 0
         if use_graph: self.joint_dim += graph_dim
         if use_smiles: self.joint_dim += smiles_dim
         if use_fp: self.joint_dim += fp_dim
 
-        # 总专家数量 (用于 Gate 的输出层计算)
         self.total_experts_for_gate = 0
         if use_graph: self.total_experts_for_gate += num_graph_experts
         if use_smiles: self.total_experts_for_gate += num_smiles_experts
@@ -143,8 +111,6 @@ class MultimodalCGC(nn.Module):
 
         self.total_experts_for_gate += num_specific_experts
 
-        # --- 3. 任务特有专家池 (Task-Specific Experts) [已修改] ---
-        # 这里使用 task_expert_hidden 作为内部维度，但 output_dim 必须保持为 expert_hidden 以便对齐
         if self.num_specific_experts > 0:
             self.specific_experts = nn.ModuleList([
                 nn.ModuleList([
@@ -160,7 +126,6 @@ class MultimodalCGC(nn.Module):
         else:
             self.specific_experts = None
 
-        # --- 4. 门控网络 ---
         self.gates = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(self.joint_dim, self.total_experts_for_gate),
@@ -168,8 +133,7 @@ class MultimodalCGC(nn.Module):
             ) for _ in range(num_tasks)
         ])
 
-        # --- 5. 任务塔 ---
-        # 输入维度固定为 expert_hidden (因为所有专家输出都对齐到了这个维度)
+
         self.task_towers = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(expert_hidden, expert_hidden // 2),
@@ -184,89 +148,62 @@ class MultimodalCGC(nn.Module):
         all_expert_outputs = []
         active_feats = []
 
-        # --- Graph ---
         if self.use_graph:
             if graph_feat is None: raise ValueError("Graph enabled but feat is None")
             active_feats.append(graph_feat)
             g_outs = [e(graph_feat).unsqueeze(2) for e in self.graph_experts]
             all_expert_outputs.append(torch.cat(g_outs, dim=2))
 
-        # --- SMILES ---
         if self.use_smiles:
             if smiles_feat is None: raise ValueError("SMILES enabled but feat is None")
             active_feats.append(smiles_feat)
             s_outs = [e(smiles_feat).unsqueeze(2) for e in self.smiles_experts]
             all_expert_outputs.append(torch.cat(s_outs, dim=2))
 
-        # --- FP ---
         if self.use_fp:
             if fp_feat is None: raise ValueError("FP enabled but feat is None")
             active_feats.append(fp_feat)
             f_outs = [e(fp_feat).unsqueeze(2) for e in self.fp_experts]
             all_expert_outputs.append(torch.cat(f_outs, dim=2))
 
-        # 联合特征
         joint_feat = torch.cat(active_feats, dim=1)
 
         final_outputs = []
 
         for i in range(self.num_tasks):
             if self.num_specific_experts > 0:
-                # 特有专家
                 spec_outs = [e(joint_feat).unsqueeze(2) for e in self.specific_experts[i]]
                 spec_outs_tensor = torch.cat(spec_outs, dim=2)
-
-                # 拼接所有专家: [Shared..., Specific...]
                 current_task_experts = all_expert_outputs + [spec_outs_tensor]
             else:
                 current_task_experts = all_expert_outputs
 
-            # 这里拼接要求 dim=1 (Hidden Dimension) 必须一致，ResidualExpert 保证了 output_dim=expert_hidden
             all_experts_tensor = torch.cat(current_task_experts, dim=2)
-
-            # 门控
             gate = self.gates[i](joint_feat).unsqueeze(1)  # [batch, 1, total_experts]
-
-            # 计算并分离 Gate 权重供分析
             gate_weights_for_analysis = gate.squeeze(1).mean(dim=0).detach().cpu().numpy()
-
-            # 聚合
             weighted_expert = torch.bmm(all_experts_tensor, gate.transpose(1, 2)).squeeze(2)
-
-            # 预测
             logits = self.task_towers[i](weighted_expert)
-
-            # 返回元组 (logits, weights)
             final_outputs.append((logits, gate_weights_for_analysis))
 
         return final_outputs
 
-
-# ==========================================
-# 3. 预测模型封装 (Prediction Model)
-# ==========================================
 class Prediction_model(nn.Module):
     def __init__(self,
                  attentive_fp=None,
                  smiles_encoder=None,
                  fingerprint_mlp=None,
-                 # --- 新增：显式维度参数 ---
                  graph_embed_dim=None,
                  smiles_embed_dim=None,
                  fp_embed_dim=None,
-                 # --- 动态开关 ---
                  use_graph=True,
                  use_smiles=True,
                  use_fp=True,
-                 # --- 专家数量配置 ---
                  num_graph_experts=3,
                  num_smiles_experts=3,
                  num_fp_experts=3,
                  num_specific_experts=2,
-                 # --- 专家维度配置 [已修改] ---
-                 expert_hidden=128,  # 共享专家维度
-                 task_expert_hidden=128,  # [新增] 任务专家维度
-                 # --- 其他 ---
+                 expert_hidden=128,  
+                 task_expert_hidden=128,  
                  num_tasks=3):
         super(Prediction_model, self).__init__()
 
@@ -278,14 +215,10 @@ class Prediction_model(nn.Module):
         self.use_smiles = use_smiles
         self.use_fp = use_fp
 
-        # -----------------------------------------------------------
-        # 维度检测逻辑
-        # -----------------------------------------------------------
         self.graph_dim = 0
         self.smiles_dim = 0
         self.fp_dim = 0
 
-        # 1. Graph Dimension
         if use_graph:
             if graph_embed_dim is not None:
                 self.graph_dim = graph_embed_dim
@@ -295,7 +228,6 @@ class Prediction_model(nn.Module):
                 self.graph_dim = 128
                 print(f"Warning: Could not detect graph_dim, using default {self.graph_dim}")
 
-        # 2. SMILES Dimension
         if use_smiles:
             if smiles_embed_dim is not None:
                 self.smiles_dim = smiles_embed_dim
@@ -307,7 +239,6 @@ class Prediction_model(nn.Module):
                 self.smiles_dim = 128
                 print(f"Warning: Could not detect smiles_dim, using default {self.smiles_dim}")
 
-        # 3. Fingerprint Dimension
         if use_fp:
             if fingerprint_mlp is None:
                 raise ValueError("use_fp=True but fingerprint_mlp is None")
@@ -330,24 +261,19 @@ class Prediction_model(nn.Module):
             f"Init CGC | Modalities: G({use_graph}:{self.graph_dim}) S({use_smiles}:{self.smiles_dim}) F({use_fp}:{self.fp_dim})")
         print(f"Experts Config | Shared Hidden: {expert_hidden} | Task Specific Hidden: {task_expert_hidden}")
 
-        # --- 初始化 CGC (传入所有参数) ---
         self.cgc = MultimodalCGC(
             graph_dim=self.graph_dim,
             smiles_dim=self.smiles_dim,
             fp_dim=self.fp_dim,
-            # 开关
             use_graph=use_graph,
             use_smiles=use_smiles,
             use_fp=use_fp,
-            # 专家数量
             num_graph_experts=num_graph_experts,
             num_smiles_experts=num_smiles_experts,
             num_fp_experts=num_fp_experts,
             num_specific_experts=num_specific_experts,
-            # 维度配置 [已修改]
             expert_hidden=expert_hidden,
-            task_expert_hidden=task_expert_hidden,  # 传入新参数
-            # 其他
+            task_expert_hidden=task_expert_hidden,  
             num_tasks=num_tasks,
             num_classes=1,
             dropout=0.25
