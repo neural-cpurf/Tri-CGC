@@ -12,25 +12,21 @@ from torch_geometric.loader import DataLoader
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, roc_auc_score, confusion_matrix, \
     matthews_corrcoef
 from rdkit import Chem, rdBase
-# 引入 MACCS 生成工具
+
 from rdkit.Chem import MACCSkeys
 import warnings
 
-# === 引入核心模型文件 ===
+
 from Multimodal_CGC_with_residual import Prediction_model, UncertaintyWeighting
-from GAT_v2 import GATv2, mol_to_graph
+from Graph_encoder import GATv2, mol_to_graph
 from SMILES_encoder import SmilesTokenizer, SmilesTextCNN
 from Fingerprint_prepare import FingerprintMLP
 
-# 忽略警告
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 rdBase.DisableLog('rdApp.warning')
 
-
-# ==========================================
-# 0. 损失函数定义
-# ==========================================
 class MaskedBCEWithLogitsLoss(nn.Module):
     def __init__(self, pos_weight=None):
         super().__init__()
@@ -47,16 +43,11 @@ class MaskedBCEWithLogitsLoss(nn.Module):
         return loss.sum() / (valid_mask.sum() + 1e-8)
 
 
-# ==========================================
-# 1. 配置参数 (Config)
-# ==========================================
 @dataclass
 class Config:
-    # 路径配置
     excel_path: str = "data/0_fold_traindata.xlsx"
     val_path: str = "data//0_fold_valdata.xlsx"
 
-    # 保存路径
     model_save_path: str = "model/model.pth"
     log_save_path: str = "log/model.xlsx"
 
@@ -64,7 +55,6 @@ class Config:
     label_cols: Tuple[str] = ("GHS_oral", "GHS_dermal", "GHS_inhalation")
     task_names: Tuple[str] = ("Oral", "Dermal", "Inhal")
 
-    # 训练参数
     batch_size: int = 64
     epochs: int = 300
     lr_base: float = 1e-3
@@ -74,15 +64,12 @@ class Config:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     patience: int = 50
 
-    # === 指纹数据增强配置 (软掩码) ===
     fp_mask_ratio: float = 0.1
 
-    # === CGC 架构超参数 ===
     use_graph: bool = True
     use_smiles: bool = True
     use_fp: bool = True
 
-    # 专家数量
     num_graph_experts: int = 2
     num_smiles_experts: int = 2
     num_fp_experts: int = 2
@@ -92,7 +79,6 @@ class Config:
     task_expert_hidden: int = 128
     num_tasks: int = 3
 
-    # --- AttentiveFP (Graph) ---
     atom_dim: int = 46
     bond_dim: int = 10
     graph_hidden_dim: int = 128
@@ -102,7 +88,6 @@ class Config:
     graph_dropout: float = 0.2
     heads: int = 4
 
-    # --- SMILES TextCNN ---
     smiles_max_len: int = 150
     smiles_embedding_dim: int = 128
     cnn_kernel_sizes: Tuple[int] = (3, 5, 6, 7, 9)
@@ -110,13 +95,11 @@ class Config:
     smiles_out_dim: int = 64
     cnn_dropout: float = 0.2
 
-    # --- Fingerprint MLP 参数 (MACCS) ---
     fp_input_dim: int = 167
     fp_hidden_dims: Tuple[int] = (256, 128)
     fp_output_dim: int = 64
     fp_dropout: float = 0.2
 
-    # 学习率配置
     lr_graph = 1e-4
     lr_smiles = 5e-5
     lr_fp = 5e-5
@@ -125,10 +108,6 @@ class Config:
 
 cfg = Config()
 
-
-# ==========================================
-# 3. 工具函数 (Utils)
-# ==========================================
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
@@ -180,10 +159,6 @@ def calculate_pos_weights(labels, num_tasks):
         print(f"Task {i} Pos Weight: {w:.4f}")
     return pos_weights
 
-
-# ==========================================
-# 4. Dataset (Graph + SMILES + MACCS)
-# ==========================================
 class GraphSmilesDataset(Dataset):
     def __init__(self, smiles_list, labels, tokenizer, augment=False):
         self.smiles_list = smiles_list
@@ -223,7 +198,6 @@ class GraphSmilesDataset(Dataset):
         input_ids = self.cached_ids[idx]
         mol = Chem.MolFromSmiles(smi)
 
-        # 1. 数据增强
         if self.augment:
             try:
                 smi_rand = Chem.MolToSmiles(mol, doRandom=True, canonical=False)
@@ -238,22 +212,18 @@ class GraphSmilesDataset(Dataset):
             except:
                 pass
 
-        # 2. 处理序列长度
         if len(input_ids) < cfg.smiles_max_len:
             pad = torch.zeros(cfg.smiles_max_len - len(input_ids), dtype=torch.long)
             input_ids = torch.cat([input_ids, pad])
         else:
             input_ids = input_ids[:cfg.smiles_max_len]
 
-        # 3. 生成分子图
         graph_data = mol_to_graph(mol)
 
-        # 4. 生成 MACCS 指纹
         try:
             maccs_fp = MACCSkeys.GenMACCSKeys(mol)
             fp_vec = np.array(maccs_fp.ToList(), dtype=np.float32)
 
-            # 指纹 Soft Masking (数据增强)
             if self.augment and cfg.fp_mask_ratio > 0.0:
                 mask = (np.random.rand(*fp_vec.shape) > cfg.fp_mask_ratio).astype(np.float32)
                 fp_vec = fp_vec * mask
@@ -268,10 +238,6 @@ class GraphSmilesDataset(Dataset):
     def __len__(self):
         return len(self.valid_indices)
 
-
-# ==========================================
-# 5. 指标计算
-# ==========================================
 def calculate_metrics_dict(logits_list, labels_list, task_idx, prefix="val"):
     metrics = {}
     task_name = cfg.task_names[task_idx]
@@ -302,14 +268,7 @@ def calculate_metrics_dict(logits_list, labels_list, task_idx, prefix="val"):
         metrics[f"{prefix}_{task_name}_auc"] = 0.5
     return metrics
 
-
-# ==========================================
-# 6. 验证/测试函数 (重构以支持不同前缀)
-# ==========================================
 def evaluate_detailed(model, loader, criterions, device, loss_weighting=None, prefix="val"):
-    """
-    通过 prefix 参数 ("val" 或 "test") 实现验证集和测试集的代码复用
-    """
     model.eval()
     total_loss = 0
     task_losses_sum = [0.0] * cfg.num_tasks
@@ -366,10 +325,6 @@ def evaluate_detailed(model, loader, criterions, device, loss_weighting=None, pr
 
     return results
 
-
-# ==========================================
-# 辅助：打印权重函数
-# ==========================================
 def print_gate_analysis(epoch_gate_weights):
     print("\n[Gate Analysis] Average Modal Contribution:")
     idx = 0
@@ -398,9 +353,6 @@ def print_gate_analysis(epoch_gate_weights):
         print(info_str)
 
 
-# ==========================================
-# 4. 训练函数
-# ==========================================
 def train_one_epoch(model, loader, optimizer, criterions, loss_weighting, device, epoch_idx):
     model.train()
     train_loss_sum = 0
@@ -477,10 +429,6 @@ def train_one_epoch(model, loader, optimizer, criterions, loss_weighting, device
 
     return epoch_log, train_metrics
 
-
-# ==========================================
-# 7. 早停类
-# ==========================================
 class EarlyStopping:
     def __init__(self, patience=7, delta=0, path='checkpoint.pth', mode='max', trace_func=print):
         self.patience = patience
@@ -519,10 +467,6 @@ class EarlyStopping:
         self.trace_func(f'Validation metric improved to {score:.4f}. Saving model ...')
         torch.save(model.state_dict(), self.path)
 
-
-# ==========================================
-# 8. 主程序
-# ==========================================
 def main():
     set_seed(cfg.seed)
     device = torch.device(cfg.device)
@@ -530,8 +474,6 @@ def main():
     print(f"Config: Graph={cfg.use_graph}, SMILES={cfg.use_smiles}, FP={cfg.use_fp}")
     print(
         f"Experts: G={cfg.num_graph_experts}, S={cfg.num_smiles_experts}, F={cfg.num_fp_experts}, Spec={cfg.num_specific_experts}")
-
-    # 加载数据集
     try:
         df_train = pd.read_excel(cfg.excel_path) if not cfg.excel_path.endswith('.csv') else pd.read_csv(cfg.excel_path)
         df_val = pd.read_excel(cfg.val_path) if not cfg.val_path.endswith('.csv') else pd.read_csv(cfg.val_path)
