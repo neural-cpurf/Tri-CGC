@@ -81,4 +81,10 @@ If you use Tri-CGC in your research, please cite:
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+## License
+
+This project is released for academic and non-commercial research use only.
+
+Commercial use is prohibited without prior written permission.
+
+See the LICENSE file for details.
