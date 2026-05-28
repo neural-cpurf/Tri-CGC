@@ -1,4 +1,4 @@
-# Tri-CGC: Trimodal Customized Gate Control for Pesticide Toxicity Prediction
+# Tri-CGC: Trimodal Customized Gate Control for Acute Toxicity Prediction
 
 A multimodal deep learning framework for predicting acute oral, dermal, and inhalation toxicity of pesticide compounds. Tri-CGC integrates three complementary molecular representations — **molecular graph**, **SMILES sequence**, and **MACCS fingerprint** — through a Customized Gate Control (CGC) architecture with residual expert networks and multi-task learning.
 
